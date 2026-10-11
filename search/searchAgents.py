@@ -39,6 +39,7 @@ from game import Directions
 from game import Agent
 from game import Actions
 import util
+import itertools
 import time
 import search
 import pacman
@@ -296,14 +297,20 @@ class CornersProblem(search.SearchProblem):
         space)
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        # State = (position, visitedCorners)
+        #   position:       Pacman's (x, y)
+        #   visitedCorners: tuple of 4 booleans, one per corner in self.corners order
+        # Both parts are tuples, so the state is small, immutable and hashable.
+        visitedCorners = tuple(corner == self.startingPosition for corner in self.corners)
+        return (self.startingPosition, visitedCorners)
 
     def isGoalState(self, state: Any):
         """
         Returns whether this search state is a goal state of the problem.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        position, visitedCorners = state
+        return all(visitedCorners)
 
     def getSuccessors(self, state: Any):
         """
@@ -326,6 +333,16 @@ class CornersProblem(search.SearchProblem):
             #   hitsWall = self.walls[nextx][nexty]
 
             "*** YOUR CODE HERE ***"
+            (x, y), visitedCorners = state
+            dx, dy = Actions.directionToVector(action)
+            nextx, nexty = int(x + dx), int(y + dy)
+            if not self.walls[nextx][nexty]:
+                nextPosition = (nextx, nexty)
+                # Mark a corner visited if we step onto it; a corner that is already
+                # True stays True, so revisiting a corner never "un-visits" it.
+                nextVisited = tuple(visited or corner == nextPosition
+                                    for corner, visited in zip(self.corners, visitedCorners))
+                successors.append(((nextPosition, nextVisited), action, 1))
 
         self._expanded += 1 # DO NOT CHANGE
         return successors
@@ -361,7 +378,25 @@ def cornersHeuristic(state: Any, problem: CornersProblem):
     walls = problem.walls # These are the walls of the maze, as a Grid (game.py)
 
     "*** YOUR CODE HERE ***"
-    return 0 # Default to trivial solution
+    # Idea: solve a RELAXED version of the problem with the walls removed.
+    # Without walls the distance between two points is the Manhattan distance, so
+    # h = length of the shortest route that starts at Pacman and visits every
+    # unvisited corner, trying every order (at most 4! = 24 orders).
+    # Removing walls can only make paths shorter, so h never overestimates
+    # (admissible); an optimal relaxed-problem cost is also consistent.
+    position, visitedCorners = state
+    unvisited = [corner for corner, visited in zip(corners, visitedCorners) if not visited]
+    if not unvisited:
+        return 0                               # goal state
+
+    best = None
+    for order in itertools.permutations(unvisited):
+        length = util.manhattanDistance(position, order[0])
+        for a, b in zip(order, order[1:]):
+            length += util.manhattanDistance(a, b)
+        if best is None or length < best:
+            best = length
+    return best
 
 class AStarCornersAgent(SearchAgent):
     "A SearchAgent for FoodSearchProblem using A* and your foodHeuristic"
